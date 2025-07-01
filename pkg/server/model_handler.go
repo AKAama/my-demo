@@ -1,0 +1,185 @@
+package server
+
+import (
+	"context"
+	"net/http"
+
+	"myapi/pkg/db"
+	"myapi/pkg/models"
+
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+	"gorm.io/gorm"
+)
+
+// ModelHandler 模型相关的处理器
+type ModelHandler struct{}
+
+// NewModelHandler 创建新的模型处理器
+func NewModelHandler() *ModelHandler {
+	return &ModelHandler{}
+}
+
+// CreateModel 创建模型
+func (h *ModelHandler) CreateModel(c *gin.Context) {
+	var req models.CreateModelRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		zap.S().Errorf("创建模型参数绑定错误: %v", err)
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(400, "参数错误: "+err.Error()))
+		return
+	}
+
+	// 转换为Model结构
+	model := models.Model{
+		Name:      req.Name,
+		Endpoint:  req.Endpoint,
+		APIKey:    req.APIKey,
+		Timeout:   req.Timeout,
+		Type:      req.Type,
+		Dimension: req.Dimension,
+	}
+
+	ctx := context.Background()
+	database := db.GetDBWithContext(ctx)
+
+	// 检查模型名是否已存在
+	var existingModel models.Model
+	if err := database.Where("name = ?", model.Name).First(&existingModel).Error; err == nil {
+		zap.S().Warnf("尝试创建重复模型名称: %s", model.Name)
+		c.JSON(http.StatusConflict, models.NewErrorResponse(409, "模型名称已存在"))
+		return
+	}
+
+	// 创建模型
+	if err := database.Create(&model).Error; err != nil {
+		zap.S().Errorf("创建模型失败: %v", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(500, "创建模型失败: "+err.Error()))
+		return
+	}
+
+	zap.S().Infof("成功创建模型: %s, ID: %s", model.Name, model.ModelID)
+	c.JSON(http.StatusOK, models.NewSuccessResponse(model))
+}
+
+// GetModel 获取单个模型
+func (h *ModelHandler) GetModel(c *gin.Context) {
+	modelID := c.Param("id")
+
+	ctx := context.Background()
+	database := db.GetDBWithContext(ctx)
+
+	var model models.Model
+	if err := database.Where("model_id = ?", modelID).First(&model).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			zap.S().Warnf("请求的模型不存在: %s", modelID)
+			c.JSON(http.StatusNotFound, models.NewErrorResponse(404, "模型不存在"))
+		} else {
+			zap.S().Errorf("查询模型失败: %v", err)
+			c.JSON(http.StatusInternalServerError, models.NewErrorResponse(500, "查询模型失败: "+err.Error()))
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, models.NewSuccessResponse(model))
+}
+
+// GetModels 获取模型列表
+func (h *ModelHandler) GetModels(c *gin.Context) {
+	ctx := context.Background()
+	database := db.GetDBWithContext(ctx)
+
+	var modelList []models.Model
+
+	if err := database.Find(&modelList).Error; err != nil {
+		zap.S().Errorf("查询模型列表失败: %v", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(500, "查询模型列表失败: "+err.Error()))
+		return
+	}
+
+	zap.S().Infof("查询到 %d 个模型", len(modelList))
+	c.JSON(http.StatusOK, models.NewSuccessResponse(modelList))
+}
+
+// UpdateModel 更新模型
+func (h *ModelHandler) UpdateModel(c *gin.Context) {
+	modelID := c.Param("id")
+
+	ctx := context.Background()
+	database := db.GetDBWithContext(ctx)
+
+	var model models.Model
+	if err := database.Where("model_id = ?", modelID).First(&model).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			zap.S().Warnf("尝试更新不存在的模型: %s", modelID)
+			c.JSON(http.StatusNotFound, models.NewErrorResponse(404, "模型不存在"))
+		} else {
+			zap.S().Errorf("查询模型失败: %v", err)
+			c.JSON(http.StatusInternalServerError, models.NewErrorResponse(500, "查询模型失败: "+err.Error()))
+		}
+		return
+	}
+
+	var req models.UpdateModelRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		zap.S().Errorf("更新模型参数绑定错误: %v", err)
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(400, "参数错误: "+err.Error()))
+		return
+	}
+
+	// 检查名称是否与其他模型冲突
+	if req.Name != model.Name {
+		var existingModel models.Model
+		if err := database.Where("name = ? AND model_id != ?", req.Name, modelID).First(&existingModel).Error; err == nil {
+			zap.S().Warnf("尝试更新为已存在的模型名称: %s", req.Name)
+			c.JSON(http.StatusConflict, models.NewErrorResponse(409, "模型名称已存在"))
+			return
+		}
+	}
+
+	// 更新模型数据
+	model.Name = req.Name
+	model.Endpoint = req.Endpoint
+	model.APIKey = req.APIKey
+	model.Timeout = req.Timeout
+	model.Type = req.Type
+	model.Dimension = req.Dimension
+
+	if err := database.Save(&model).Error; err != nil {
+		zap.S().Errorf("更新模型失败: %v", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(500, "更新模型失败: "+err.Error()))
+		return
+	}
+
+	zap.S().Infof("成功更新模型: %s, ID: %s", model.Name, model.ModelID)
+	c.JSON(http.StatusOK, models.NewSuccessResponse(model))
+}
+
+// DeleteModel 删除模型
+func (h *ModelHandler) DeleteModel(c *gin.Context) {
+	modelID := c.Param("id")
+
+	ctx := context.Background()
+	database := db.GetDBWithContext(ctx)
+
+	var model models.Model
+	if err := database.Where("model_id = ?", modelID).First(&model).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			zap.S().Warnf("尝试删除不存在的模型: %s", modelID)
+			c.JSON(http.StatusNotFound, models.NewErrorResponse(404, "模型不存在"))
+		} else {
+			zap.S().Errorf("查询模型失败: %v", err)
+			c.JSON(http.StatusInternalServerError, models.NewErrorResponse(500, "查询模型失败: "+err.Error()))
+		}
+		return
+	}
+
+	if err := database.Delete(&model).Error; err != nil {
+		zap.S().Errorf("删除模型失败: %v", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(500, "删除模型失败: "+err.Error()))
+		return
+	}
+
+	zap.S().Infof("成功删除模型: %s, ID: %s", model.Name, model.ModelID)
+	c.JSON(http.StatusOK, models.NewSuccessResponse(gin.H{"message": "模型删除成功"}))
+}
