@@ -8,11 +8,11 @@ type APIResponse struct {
 }
 
 // NewSuccessResponse 创建成功响应
-func NewSuccessResponse(data interface{}) *APIResponse {
+func NewSuccessResponse(data interface{}, msg string) *APIResponse {
 	return &APIResponse{
 		Status: 200,
 		Data:   data,
-		Msg:    "",
+		Msg:    msg,
 	}
 }
 

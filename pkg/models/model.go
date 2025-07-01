@@ -32,12 +32,12 @@ type CreateModelRequest struct {
 
 // UpdateModelRequest 更新模型的请求结构
 type UpdateModelRequest struct {
-	Name      string `json:"name" `
-	Endpoint  string `json:"endpoint" `
-	APIKey    string `json:"api_key" `
-	Timeout   int    `json:"timeout" `
-	Type      string `json:"type"`
-	Dimension int    `json:"dimension" `
+	Name      *string `json:"name"`
+	Endpoint  *string `json:"endpoint"`
+	APIKey    *string `json:"api_key"`
+	Timeout   *int    `json:"timeout"`
+	Type      *string `json:"type"`
+	Dimension *int    `json:"dimension"`
 }
 
 // BeforeCreate GORM钩子，在创建前生成UUID

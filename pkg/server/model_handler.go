@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net/http"
+	"strconv"
 
 	"myapi/pkg/db"
 	"myapi/pkg/models"
@@ -59,7 +60,7 @@ func (h *ModelHandler) CreateModel(c *gin.Context) {
 	}
 
 	zap.S().Infof("成功创建模型: %s, ID: %s", model.Name, model.ModelID)
-	c.JSON(http.StatusOK, models.NewSuccessResponse(model))
+	c.JSON(http.StatusOK, models.NewSuccessResponse(model, "成功创建模型"))
 }
 
 // GetModel 获取单个模型
@@ -81,7 +82,7 @@ func (h *ModelHandler) GetModel(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, models.NewSuccessResponse(model))
+	c.JSON(http.StatusOK, models.NewSuccessResponse(model, "查询成功"))
 }
 
 // GetModels 获取模型列表
@@ -89,16 +90,39 @@ func (h *ModelHandler) GetModels(c *gin.Context) {
 	ctx := context.Background()
 	database := db.GetDBWithContext(ctx)
 
-	var modelList []models.Model
+	// 解析分页参数
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
 
-	if err := database.Find(&modelList).Error; err != nil {
+	var modelList []models.Model
+	var total int64
+
+	// 查询总数
+	if err := database.Model(&models.Model{}).Count(&total).Error; err != nil {
+		zap.S().Errorf("查询模型总数失败: %v", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(500, "查询模型总数失败: "+err.Error()))
+		return
+	}
+
+	// 分页查询
+	if err := database.Limit(pageSize).Offset((page - 1) * pageSize).Find(&modelList).Error; err != nil {
 		zap.S().Errorf("查询模型列表失败: %v", err)
 		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(500, "查询模型列表失败: "+err.Error()))
 		return
 	}
 
-	zap.S().Infof("查询到 %d 个模型", len(modelList))
-	c.JSON(http.StatusOK, models.NewSuccessResponse(modelList))
+	c.JSON(http.StatusOK, models.NewSuccessResponse(gin.H{
+		"list":      modelList,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	}, "查询模型列表成功"))
 }
 
 // UpdateModel 更新模型
@@ -128,22 +152,34 @@ func (h *ModelHandler) UpdateModel(c *gin.Context) {
 	}
 
 	// 检查名称是否与其他模型冲突
-	if req.Name != model.Name {
+	if req.Name != nil && *req.Name != model.Name {
 		var existingModel models.Model
-		if err := database.Where("name = ? AND model_id != ?", req.Name, modelID).First(&existingModel).Error; err == nil {
-			zap.S().Warnf("尝试更新为已存在的模型名称: %s", req.Name)
+		if err := database.Where("name = ? AND model_id != ?", *req.Name, modelID).First(&existingModel).Error; err == nil {
+			zap.S().Warnf("尝试更新为已存在的模型名称: %s", *req.Name)
 			c.JSON(http.StatusConflict, models.NewErrorResponse(409, "模型名称已存在"))
 			return
 		}
 	}
 
-	// 更新模型数据
-	model.Name = req.Name
-	model.Endpoint = req.Endpoint
-	model.APIKey = req.APIKey
-	model.Timeout = req.Timeout
-	model.Type = req.Type
-	model.Dimension = req.Dimension
+	// 只更新提供的字段
+	if req.Name != nil {
+		model.Name = *req.Name
+	}
+	if req.Endpoint != nil {
+		model.Endpoint = *req.Endpoint
+	}
+	if req.APIKey != nil {
+		model.APIKey = *req.APIKey
+	}
+	if req.Timeout != nil {
+		model.Timeout = *req.Timeout
+	}
+	if req.Type != nil {
+		model.Type = *req.Type
+	}
+	if req.Dimension != nil {
+		model.Dimension = *req.Dimension
+	}
 
 	if err := database.Save(&model).Error; err != nil {
 		zap.S().Errorf("更新模型失败: %v", err)
@@ -152,7 +188,7 @@ func (h *ModelHandler) UpdateModel(c *gin.Context) {
 	}
 
 	zap.S().Infof("成功更新模型: %s, ID: %s", model.Name, model.ModelID)
-	c.JSON(http.StatusOK, models.NewSuccessResponse(model))
+	c.JSON(http.StatusOK, models.NewSuccessResponse(model, "成功更新模型"))
 }
 
 // DeleteModel 删除模型
@@ -181,5 +217,5 @@ func (h *ModelHandler) DeleteModel(c *gin.Context) {
 	}
 
 	zap.S().Infof("成功删除模型: %s, ID: %s", model.Name, model.ModelID)
-	c.JSON(http.StatusOK, models.NewSuccessResponse(gin.H{"message": "模型删除成功"}))
+	c.JSON(http.StatusOK, models.NewSuccessResponse(model, "成功删除模型"))
 }
