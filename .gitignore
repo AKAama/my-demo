@@ -8,3 +8,4 @@ COPY bin/"your app" /app/
 COPY etc /app/etc
 WORKDIR /app
 CMD ["./your app","-c","etc/config.yaml"]
+.idea/vcs.xml

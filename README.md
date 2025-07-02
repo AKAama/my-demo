@@ -130,6 +130,50 @@ curl -X DELETE http://localhost:3000/api/v1/models/<model_id>
 | created_at  | timestamp    | 创建时间     |
 | updated_at  | timestamp    | 更新时间     |
 
+## 大模型对话 API
+
+### 功能简介
+- 支持通过 HTTP POST 向指定模型发起对话请求，自动读取数据库中的 endpoint 和 api_key，转发到大模型服务（如 OpenAI）。
+- 完全兼容 OpenAI Chat Completions API 格式。
+
+### 路由
+- `/api/v1/models/chat/:id`  
+  其中 `:id` 为模型的 model_id
+
+### 请求示例
+```bash
+curl -X POST http://localhost:3000/api/v1/models/chat/<model_id> \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o",
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "Hello!"}
+    ]
+  }'
+```
+
+### 请求参数说明
+| 字段      | 类型           | 说明                       |
+|-----------|----------------|----------------------------|
+| model     | string         | OpenAI官方模型名，如gpt-4o |
+| messages  | ChatMessage[]  | 对话历史，见下表           |
+
+#### ChatMessage 结构
+| 字段    | 类型   | 说明                                   |
+|---------|--------|----------------------------------------|
+| role    | string | "system"、"user"、"assistant"          |
+| content | string | 消息内容                               |
+
+### 响应
+- 直接返回大模型接口的原始响应（如OpenAI格式）。
+
+### 常见问题
+- **Authorization header 错误**：请确保 api_key 字段无多余空格、回车。
+- **i/o timeout**：本地或服务器需能访问 OpenAI，需科学上网。
+- **insufficient_quota**：API Key 没有可用额度，请充值或更换 key。
+- **role/model 字段错误**：请严格按 OpenAI 官方文档填写。
+
 ---
 
 如有问题欢迎提 issue 或二次开发！ 

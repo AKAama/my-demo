@@ -1,9 +1,14 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"myapi/pkg/db"
 	"myapi/pkg/models"
@@ -72,7 +77,7 @@ func (h *ModelHandler) GetModel(c *gin.Context) {
 
 	var model models.Model
 	if err := database.Where("model_id = ?", modelID).First(&model).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			zap.S().Warnf("请求的模型不存在: %s", modelID)
 			c.JSON(http.StatusNotFound, models.NewErrorResponse(404, "模型不存在"))
 		} else {
@@ -134,7 +139,7 @@ func (h *ModelHandler) UpdateModel(c *gin.Context) {
 
 	var model models.Model
 	if err := database.Where("model_id = ?", modelID).First(&model).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			zap.S().Warnf("尝试更新不存在的模型: %s", modelID)
 			c.JSON(http.StatusNotFound, models.NewErrorResponse(404, "模型不存在"))
 		} else {
@@ -200,7 +205,7 @@ func (h *ModelHandler) DeleteModel(c *gin.Context) {
 
 	var model models.Model
 	if err := database.Where("model_id = ?", modelID).First(&model).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			zap.S().Warnf("尝试删除不存在的模型: %s", modelID)
 			c.JSON(http.StatusNotFound, models.NewErrorResponse(404, "模型不存在"))
 		} else {
@@ -218,4 +223,66 @@ func (h *ModelHandler) DeleteModel(c *gin.Context) {
 
 	zap.S().Infof("成功删除模型: %s, ID: %s", model.Name, model.ModelID)
 	c.JSON(http.StatusOK, models.NewSuccessResponse(model, "成功删除模型"))
+}
+
+// ChatWithModel 大模型对话接口
+func (h *ModelHandler) ChatWithModel(c *gin.Context) {
+	modelID := c.Param("id")
+	ctx := context.Background()
+	database := db.GetDBWithContext(ctx)
+
+	// 查找模型
+	var model models.Model
+	if err := database.Where("model_id = ?", modelID).First(&model).Error; err != nil {
+		c.JSON(http.StatusNotFound, models.NewErrorResponse(404, "模型不存在"))
+		return
+	}
+
+	// 解析提问内容
+	var req models.ChatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(400, "参数错误: "+err.Error()))
+		return
+	}
+
+	// 构造大模型API请求
+	payload, err := json.Marshal(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(500, "请求序列化失败: "+err.Error()))
+		return
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", model.Endpoint, bytes.NewBuffer(payload))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(500, "请求创建失败: "+err.Error()))
+		return
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	apiKey := strings.TrimSpace(model.APIKey)
+	if apiKey == "" {
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(500, "API Key 为空"))
+		return
+	}
+	if strings.ContainsAny(apiKey, "\r\n\t ") {
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(500, "API Key 包含非法字符"))
+		return
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+
+	// 发起请求
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(500, "大模型请求失败: "+err.Error()))
+		return
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
+
+	// 直接返回大模型响应
+	c.Data(resp.StatusCode, "application/json", body)
 }

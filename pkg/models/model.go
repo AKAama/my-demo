@@ -40,6 +40,18 @@ type UpdateModelRequest struct {
 	Dimension *int    `json:"dimension"`
 }
 
+// OpenAI风格的对话消息结构体
+type ChatMessage struct {
+	Role    string `json:"role" binding:"required"`
+	Content string `json:"content" binding:"required"`
+}
+
+// OpenAI风格的对话请求结构体
+type ChatRequest struct {
+	Model    string        `json:"model" binding:"required"`
+	Messages []ChatMessage `json:"messages" binding:"required"`
+}
+
 // BeforeCreate GORM钩子，在创建前生成UUID
 func (m *Model) BeforeCreate(*gorm.DB) error {
 	if m.ModelID == "" {
