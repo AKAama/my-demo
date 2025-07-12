@@ -1,10 +1,10 @@
-FROM --platform=amd64 alpine:3.14
+FROM alpine:3.18
 
-MAINTAINER fanxun <67831061@qq.com>
+LABEL maintainer="yhma <yhma@sudytech.cn>"
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 RUN apk add -U tzdata \
     && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
-COPY bin/"your app" /app/
+COPY bin/"myapi" /app/
 COPY etc /app/etc
 WORKDIR /app
-CMD ["./your app","-c","etc/config.yaml"]
+CMD ["./myapi","-c","etc/config.yaml"]

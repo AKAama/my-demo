@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/google/uuid"
 	"io"
 	"net/http"
 	"strconv"
@@ -38,12 +39,12 @@ func (h *ModelHandler) CreateModel(c *gin.Context) {
 
 	// 转换为Model结构
 	model := models.Model{
-		Name:      req.Name,
-		Endpoint:  req.Endpoint,
-		APIKey:    req.APIKey,
-		Timeout:   req.Timeout,
-		Type:      req.Type,
-		Dimension: req.Dimension,
+		Name:       req.Name,
+		Endpoint:   req.Endpoint,
+		APIKey:     req.APIKey,
+		Timeout:    req.Timeout,
+		Type:       req.Type,
+		Dimensions: req.Dimensions,
 	}
 
 	ctx := context.Background()
@@ -56,7 +57,7 @@ func (h *ModelHandler) CreateModel(c *gin.Context) {
 		c.JSON(http.StatusConflict, models.NewErrorResponse(409, "模型名称已存在"))
 		return
 	}
-
+	model.ModelID = uuid.New().String()
 	// 创建模型
 	if err := database.Create(&model).Error; err != nil {
 		zap.S().Errorf("创建模型失败: %v", err)
@@ -182,8 +183,8 @@ func (h *ModelHandler) UpdateModel(c *gin.Context) {
 	if req.Type != nil {
 		model.Type = *req.Type
 	}
-	if req.Dimension != nil {
-		model.Dimension = *req.Dimension
+	if req.Dimensions != nil {
+		model.Dimensions = *req.Dimensions
 	}
 
 	if err := database.Save(&model).Error; err != nil {
